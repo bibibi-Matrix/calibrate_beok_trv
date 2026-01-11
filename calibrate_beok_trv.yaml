@@ -1,0 +1,91 @@
+blueprint:
+  name: Калибровка внешней температуры для TRV
+  description: >
+    Автоматическая калибровка внутренней температуры терморегуляторов Beok BOT-R7W-X-WIFI-NR
+    на основе показаний внешнего датчика температуры.
+  domain: automation
+  input:
+    external_temp:
+      name: Выберите внешний датчик температуры
+      description: Этот датчик будет использоваться как источник внешней температуры.
+      selector:
+        entity:
+          domain:
+          - sensor
+          device_class:
+          - temperature
+          multiple: false
+    climate_names:
+      name: Терморегуляторы (TRV)
+      description: Список терморегуляторов Beok BOT-R7W-X-WIFI-NR, которые будут калиброваться.
+      selector:
+        entity:
+          domain:
+          - climate
+          multiple: true
+    offset_factor:
+      name: Коэффициент коррекции
+      description: >
+        Добавляет взвешенную разницу между текущей и целевой температурой.
+        Формула: коэффициент * (фактическая температура - целевая температура).
+        При значении 0 — коррекция не применяется.
+      selector:
+        number:
+          min: 0.0
+          max: 2.0
+          step: 0.1
+          mode: slider
+alias: Калибровка терморегуляторов Beok
+description: ''
+variables:
+  climate_names: !input climate_names
+  external_temperature: !input external_temp
+  offset_factor: !input offset_factor
+trigger:
+- platform: state
+  entity_id: !input external_temp
+  for:
+    hours: 0
+    minutes: 0
+    seconds: 15
+    milliseconds: 0
+- platform: state
+  entity_id: !input climate_names
+  for:
+    hours: 0
+    minutes: 0
+    seconds: 15
+    milliseconds: 0
+condition:
+  condition: and
+  conditions:
+  - condition: template
+    value_template: '{{ states(external_temperature) != ''unavailable'' }}'
+  - condition: template
+    value_template: '{{ states(external_temperature) != ''unknown'' }}'
+action:
+- repeat:
+    for_each: '{{ climate_names }}'
+    sequence:
+    - variables:
+        climate_name: '{{ repeat.item }}'
+        device_calib: number.{{ climate_name.removeprefix('climate.') }}_temperature_correction
+        external_temp: '{{ states(external_temperature) | float() }}'
+        local_temp: '{{ state_attr(climate_name, ''current_temperature'') | float() }}'
+        target_temp: '{{ state_attr(climate_name, ''temperature'') | float() }}'
+        actual_calib: '{{ states(device_calib) | float() }}'
+        temp_diff: '{{ external_temp - target_temp }}'
+        calibration_offset: '{{ temp_diff * offset_factor }}'
+        target_calib: '{{ external_temp - (local_temp - actual_calib) + calibration_offset }}'
+        target_calib_clamped: '{{ [ ([target_calib, 9] | min), -9 ] | max }}'
+    - alias: Проверка необходимости изменения калибровки
+      condition: template
+      value_template: '{{ actual_calib != target_calib_clamped }}'
+    - service: number.set_value
+      target:
+        entity_id: '{{ device_calib }}'
+      data:
+        value: '{{ target_calib_clamped }}'
+- delay: 5
+mode: single
+max_exceeded: silent
