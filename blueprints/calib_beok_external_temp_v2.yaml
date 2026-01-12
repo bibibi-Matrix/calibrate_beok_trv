@@ -1,0 +1,117 @@
+blueprint:
+  name: Калибровка терморегулятора Beok BOT-R7W-X-WIFI-NR на основе внешнего датчика температуры V2
+  description: >
+    Автоматическая калибровка температуры терморегулятора Beok BOT-R7W-X-WIFI-NR на основе показаний внешнего датчика температуры.
+  domain: automation
+  input:
+    external_temp:
+      name: Выберите внешний датчик температуры
+      description: Список внешних датчиков температуры используемых как источник показаний температуры.
+      selector:
+        entity:
+          domain:
+            - sensor
+          device_class:
+            - temperature
+          multiple: false
+    climate_names:
+      name: Выберите терморегулятор Beok BOT-R7W-X-WIFI-NR
+      description: Список терморегуляторов.
+      selector:
+        entity:
+          domain:
+            - climate
+          multiple: true
+    enable_offset:
+      name: Включить коэффициент коррекции
+      description: >
+        Если включено, используется формула с учетом коэффициента коррекции.
+        Если выключено — применяется простое смещение: (внешняя температура - внутренняя температура).
+      default: true
+      selector:
+        boolean: {}
+    offset_factor:
+      name: Коэффициент коррекции
+      description: >
+        Добавляет взвешенную разницу между текущей и целевой температурой.
+        Формула: коэффициент * (фактическая температура - целевая температура).
+        
+        При следующих значениях:
+        0   — коррекция не применяется;
+        0.5 — частичная компенсация отклонения;
+        1   — полная компенсация отклонения.
+        Значения больше 1 усиливают коррекцию, а меньше 1 — смягчают её.
+      default: 0
+      selector:
+        number:
+          min: 0.0
+          max: 1.0
+          step: 0.1
+          mode: slider
+  source_url: https://github.com/bibibi-Matrix/calibrate_beok_trv/blob/main/blueprints/calib_beok_external_temp.yaml
+
+alias: Калибровка терморегулятора Beok BOT-R7W-X-WIFI-NR
+description: ''
+variables:
+  climate_names: !input climate_names
+  external_temperature: !input external_temp
+  enable_offset: !input enable_offset
+  offset_factor: !input offset_factor
+
+trigger:
+  - platform: state
+    entity_id: !input external_temp
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 15
+  - platform: state
+    entity_id: !input climate_names
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 15
+
+condition:
+  condition: and
+  conditions:
+    - condition: template
+      value_template: "{{ states(external_temperature) not in ['unavailable', 'unknown'] }}"
+
+action:
+  - repeat:
+      for_each: "{{ climate_names }}"
+      sequence:
+        - variables:
+            climate_name: "{{ repeat.item }}"
+            device_calib: "number.{{ climate_name.removeprefix('climate.') }}_temperature_correction"
+            external_temp: "{{ states(external_temperature) | float }}"
+            local_temp: "{{ state_attr(climate_name, 'current_temperature') | float }}"
+            target_temp: "{{ state_attr(climate_name, 'temperature') | float }}"
+            actual_calib: "{{ states(device_calib) | float }}"
+            temp_diff_simple: "{{ external_temp - local_temp }}"
+            temp_diff_targeted: "{{ external_temp - target_temp }}"
+            calibration_offset: >
+              {% if enable_offset %}
+                {{ temp_diff_targeted * offset_factor }}
+              {% else %}
+                0
+              {% endif %}
+            target_calib: >
+              {% if enable_offset %}
+                {{ external_temp - (local_temp - actual_calib) + calibration_offset }}
+              {% else %}
+                {{ actual_calib + temp_diff_simple }}
+              {% endif %}
+            target_calib_clamped: "{{ [ [target_calib, 9] | min, -9 ] | max }}"
+        - alias: Проверка необходимости проведения калибровки
+          condition: template
+          value_template: "{{ actual_calib != target_calib_clamped }}"
+        - service: number.set_value
+          target:
+            entity_id: "{{ device_calib }}"
+          data:
+            value: "{{ target_calib_clamped }}"
+  - delay: 5
+mode: single
+max_exceeded: silent
