@@ -41,6 +41,7 @@ blueprint:
           max: 2.0
           step: 0.1
           mode: slider
+source_url: https://github.com/bibibi-Matrix/calibrate_beok_trv/edit/main/blueprints/calib_beok_external_temp.yaml
 alias: Калибровка терморегулятора Beok BOT-R7W-X-WIFI-NR
 description: ''
 variables:
