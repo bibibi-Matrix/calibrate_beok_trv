@@ -89,20 +89,24 @@ action:
             local_temp: "{{ state_attr(climate_name, 'current_temperature') | float }}"
             target_temp: "{{ state_attr(climate_name, 'temperature') | float }}"
             actual_calib: "{{ states(device_calib) | float }}"
+            # Разница между внешней и целевой температурой
             temp_diff_targeted: "{{ external_temp - target_temp }}"
+            # Применяем коррекцию только если enable_offset == true
             calibration_offset: >
               {% if enable_offset %}
                 {{ temp_diff_targeted * offset_factor }}
               {% else %}
                 0
               {% endif %}
-            target_calib: >
+            # Определяем новую калибровку
+            target_calib_raw: >
               {% if enable_offset %}
                 {{ external_temp - (local_temp - actual_calib) + calibration_offset }}
               {% else %}
                 {{ external_temp - (local_temp - actual_calib) }}
               {% endif %}
-            target_calib_clamped: "{{ [ [target_calib, 9] | min, -9 ] | max }}"
+            # Ограничиваем диапазон [-9, 9]
+            target_calib_clamped: "{{ [ [target_calib_raw, 9] | min, -9 ] | max }}"
         - alias: Проверка необходимости проведения калибровки
           condition: template
           value_template: "{{ actual_calib != target_calib_clamped }}"
