@@ -1,5 +1,5 @@
 blueprint:
-  name: Калибровка терморегулятора Beok BOT-R7W-X-WIFI-NR на основе внешнего датчика температуры V2
+  name: Калибровка терморегулятора Beok BOT-R7W-X-WIFI-NR на основе внешнего датчика температуры
   description: >
     Автоматическая калибровка температуры терморегулятора Beok BOT-R7W-X-WIFI-NR на основе показаний внешнего датчика температуры.
   domain: automation
@@ -26,7 +26,7 @@ blueprint:
       name: Включить коэффициент коррекции
       description: >
         Если включено, используется формула с учетом коэффициента коррекции.
-        Если выключено — применяется простое смещение: (внешняя температура - внутренняя температура).
+        Если выключено — применяется простое смещение: (внешняя температура - (внутренняя температура - текущая калибровка)).
       default: true
       selector:
         boolean: {}
@@ -89,7 +89,6 @@ action:
             local_temp: "{{ state_attr(climate_name, 'current_temperature') | float }}"
             target_temp: "{{ state_attr(climate_name, 'temperature') | float }}"
             actual_calib: "{{ states(device_calib) | float }}"
-            temp_diff_simple: "{{ external_temp - local_temp }}"
             temp_diff_targeted: "{{ external_temp - target_temp }}"
             calibration_offset: >
               {% if enable_offset %}
@@ -101,7 +100,7 @@ action:
               {% if enable_offset %}
                 {{ external_temp - (local_temp - actual_calib) + calibration_offset }}
               {% else %}
-                {{ actual_calib + temp_diff_simple }}
+                {{ external_temp - (local_temp - actual_calib) }}
               {% endif %}
             target_calib_clamped: "{{ [ [target_calib, 9] | min, -9 ] | max }}"
         - alias: Проверка необходимости проведения калибровки
