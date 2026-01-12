@@ -1,11 +1,11 @@
 blueprint:
-  name: Calibrate TRV external temperature
-  description: Calibrate Moest BRT-100 TRV internal temperature according to external temperature sensor
+  name: Калибровка термоголовки TRV-M2Z на основе внешнего датчика температуры
+  description: Автоматическая калибровка температуры термоголовки TRV-M2Z на основе показаний внешнего датчика температуры.
   domain: automation
   input:
     external_temp:
-      name: Select the external temp sensor
-      description: This will be your external temp sensor.
+      name: Выберите внешний датчик температуры
+      description: Список внешних датчиков температуры используемых как источник показаний температуры.
       selector:
         entity:
           domain:
@@ -14,26 +14,33 @@ blueprint:
           - temperature
           multiple: false
     climate_names:
-      name: Climate entries
-      description: This will be the MOES TRVs that will be calibrated using the external sensor.
+      name: Выберите термоголовку TRV-M2Z
+      description: Список термоголовок.
       selector:
         entity:
           domain:
           - climate
           multiple: true
     offset_factor:
-      name: Calibration Offset Factor
-      description: |
-        Adds weighted diff in actual and target temperature.
-        will add following formula to calibration: offset_factor * (actual_temp - target_temp)
-        0 = no offset
+      name: Коэффициент коррекции
+      description: >
+        Добавляет взвешенную разницу между текущей и целевой температурой.
+        Формула: коэффициент * (фактическая температура - целевая температура).
+    
+        При следующих значениях
+        0   — коррекция не применяется (калибровка основывается только на разнице между показаниями внешнего датчика температуры и внутреннего датчика терморегулятора);
+        0.5 — частичная компенсация отклонения (используется половина разницы между показаниями внешнего датчика и внутренним датчиком терморегулятора, с учётом заданной температуры);
+        1   — полная компенсация отклонения (калибровка учитывает всю разницу между показаниями внешнего датчика и внутренним датчиком терморегулятора, с учётом заданной температуры).
+
+        Значения больше 1 усиливают коррекцию, а меньше 1 — смягчают её (максимальное значение 2).
+      default: 0
       selector:
         number:
           min: 0
           max: 2
           step: 0.1
   source_url: https://github.com/bibibi-Matrix/calibrate_beok_trv/blob/main/blueprints/calib_trv_external_temp.yaml
-alias: Calibrate Moes TRVs
+alias: Калибровка термоголовки TRV-M2Z
 description: ''
 variables:
   climate_names: !input climate_names
